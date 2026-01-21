@@ -9,12 +9,14 @@ from user_db import init_user_db, create_user, get_all_users
 from user_db import get_user_for_vm   # we’ll add this next
 from user_db import mark_vm_created, get_db
 from flask_cors import CORS
+from flask import session, redirect, url_for
 
 
 app = Flask(__name__)
 CORS(app)
 init_user_db()
 file_lock = threading.Lock()
+app.secret_key = "SOC-LAB-UNIVERSITY-2026"
 
 # ---------------- STORAGE ----------------
 LOG_DIR = "logs"
@@ -120,6 +122,103 @@ def web_login():
         "role": "user"
     })
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+
+        # Simple LAB admin login (can move to DB later)
+        if username == "admin" and password == "admin@123":
+            session["logged_in"] = True
+            session["user"] = "admin"
+            return redirect("/")
+        else:
+            error = "Invalid credentials"
+
+    return render_template_string("""
+<!DOCTYPE html>
+<html>
+<head>
+<title>SOC Lab Login</title>
+<style>
+body {
+    background: linear-gradient(135deg, #020617, #020617);
+    font-family: Segoe UI;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    color:#e5e7eb;
+}
+.login-box {
+    background:#020617;
+    border:1px solid #1e293b;
+    padding:35px;
+    border-radius:14px;
+    width:360px;
+    box-shadow:0 10px 40px rgba(0,0,0,0.6);
+}
+h2 {
+    text-align:center;
+    color:#38bdf8;
+    margin-bottom:25px;
+}
+input {
+    width:100%;
+    padding:12px;
+    margin:10px 0;
+    border-radius:8px;
+    border:1px solid #1e293b;
+    background:#020617;
+    color:white;
+}
+button {
+    width:100%;
+    padding:12px;
+    background:#38bdf8;
+    color:#020617;
+    border:none;
+    border-radius:8px;
+    font-weight:bold;
+    cursor:pointer;
+}
+.error {
+    color:#ef4444;
+    text-align:center;
+    margin-top:10px;
+}
+.footer {
+    margin-top:18px;
+    text-align:center;
+    font-size:13px;
+    color:#94a3b8;
+}
+</style>
+</head>
+<body>
+
+<div class="login-box">
+    <h2>🛡 SOC LAB LOGIN</h2>
+    <form method="POST">
+        <input type="text" name="username" placeholder="Admin Username" required>
+        <input type="password" name="password" placeholder="Password" required>
+        <button type="submit">Login</button>
+    </form>
+    {% if error %}
+        <div class="error">{{ error }}</div>
+    {% endif %}
+    <div class="footer">
+        University Cyber Security Lab<br>
+        Authorized Access Only
+    </div>
+</div>
+
+</body>
+</html>
+""", error=error)
 
 
 @app.route("/api/create-user", methods=["POST"])
@@ -201,9 +300,17 @@ def get_user_message():
 
     return jsonify(msg)
 
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
+
+
 # ---------------- DASHBOARD ----------------
 @app.route("/")
 def dashboard():
+    if not session.get("logged_in"):
+        return redirect("/login")
     logs = read_logs()
     provisioned_users = get_all_users()
 
@@ -273,142 +380,281 @@ def dashboard():
 
     html = """
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>SOC Monitoring Dashboard</title>
-    
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body { background:#0b1220; color:#e5e7eb; font-family:Segoe UI; margin:0 }
-        header { background:#020617; padding:15px 30px; color:#38bdf8; font-size:22px }
-        .container { padding:25px }
-        .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:20px }
-        .card { background:#020617; padding:20px; border-radius:12px; border:1px solid #1e293b; margin-bottom:20px }
-        h3 { margin-top:0; color:#38bdf8 }
-        table { width:100%; border-collapse:collapse }
-        th,td { padding:8px; border-bottom:1px solid #1e293b }
-        th { color:#93c5fd }
-        .online { color:#22c55e }
-        .offline { color:#ef4444 }
-        .vuln { color:#ef4444; font-weight:bold }
-        .rank { color:#facc15; font-weight:bold }
-        canvas { max-height:260px !important; }
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 20px;
-        }
+<meta charset="UTF-8">
+<title>University SOC Dashboard</title>
 
-    </style>
+<style>
+:root {
+    --bg-main:#020617;
+    --bg-panel:#020617;
+    --border:#1e293b;
+    --primary:#38bdf8;
+    --success:#22c55e;
+    --danger:#ef4444;
+    --warning:#facc15;
+    --muted:#94a3b8;
+    --text:#e5e7eb;
+}
+
+*{box-sizing:border-box}
+
+body{
+    margin:0;
+    background:var(--bg-main);
+    color:var(--text);
+    font-family:"Segoe UI",system-ui,sans-serif;
+    display:flex;
+}
+
+/* ---------- SIDEBAR ---------- */
+.sidebar{
+    width:260px;
+    background:#020617;
+    border-right:1px solid var(--border);
+    padding:24px 18px;
+    height:100vh;
+    position:fixed;
+}
+
+.sidebar h2{
+    color:var(--primary);
+    margin-bottom:28px;
+}
+
+.sidebar a{
+    display:block;
+    padding:12px 14px;
+    margin-bottom:10px;
+    border-radius:12px;
+    color:var(--text);
+    text-decoration:none;
+    cursor:pointer;
+    transition:0.2s;
+}
+
+.sidebar a:hover,
+.sidebar a.active{
+    background:#020617;
+    border:1px solid var(--border);
+}
+
+.sidebar .logout{
+    margin-top:40px;
+    background:linear-gradient(135deg,#ef4444,#dc2626);
+    text-align:center;
+    font-weight:600;
+}
+
+/* ---------- MAIN ---------- */
+.main{
+    margin-left:260px;
+    width:calc(100% - 260px);
+    padding:34px;
+}
+
+/* ---------- SECTIONS ---------- */
+.section{
+    display:none;
+    animation:fade 0.3s ease-in;
+}
+
+.section.active{
+    display:block;
+}
+
+@keyframes fade{
+    from{opacity:0;transform:translateY(5px)}
+    to{opacity:1;transform:none}
+}
+
+.section-title{
+    font-size:20px;
+    color:var(--primary);
+    margin-bottom:20px;
+    border-left:4px solid var(--primary);
+    padding-left:12px;
+}
+
+/* ---------- CARDS ---------- */
+.card{
+    background:linear-gradient(180deg,#020617,#020617);
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:24px;
+    margin-bottom:26px;
+    box-shadow:0 12px 30px rgba(0,0,0,0.55);
+}
+
+/* ---------- GRID ---------- */
+.grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(360px,1fr));
+    gap:24px;
+}
+
+/* ---------- TABLE ---------- */
+table{
+    width:100%;
+    border-collapse:collapse;
+}
+
+th,td{
+    padding:12px;
+    border-bottom:1px solid var(--border);
+    font-size:14px;
+}
+
+th{
+    color:#93c5fd;
+    font-weight:600;
+    text-transform:uppercase;
+    font-size:13px;
+}
+
+tr:hover{background:#020617}
+
+/* ---------- STATUS ---------- */
+.online{color:var(--success);font-weight:600}
+.offline{color:var(--danger);font-weight:600}
+.vuln{color:var(--danger);font-weight:700}
+.rank{color:var(--warning);font-weight:700}
+
+/* ---------- FORM ---------- */
+.form-row{
+    display:flex;
+    gap:14px;
+    flex-wrap:wrap;
+}
+
+input{
+    flex:1;
+    padding:12px;
+    border-radius:12px;
+    border:1px solid var(--border);
+    background:#020617;
+    color:white;
+}
+
+button{
+    padding:12px 20px;
+    border-radius:12px;
+    background:linear-gradient(135deg,#22c55e,#16a34a);
+    color:#020617;
+    border:none;
+    font-weight:600;
+    cursor:pointer;
+}
+
+.footer{
+    margin-top:50px;
+    text-align:center;
+    font-size:13px;
+    color:var(--muted);
+}
+</style>
 </head>
 
 <body>
-<header>🛡 SOC Monitoring Dashboard</header>
 
-<div class="container">
-<div class="card">
-    <h3>➕ Create New VM ↔ Web User</h3>
+<!-- SIDEBAR -->
+<div class="sidebar">
+    <h2>🛡 SOC LAB</h2>
 
-    <form method="POST" action="/create-user">
-    <input
-        type="text"
-        name="username"
-        placeholder="Username"
-        required
-        style="padding:8px;width:40%;border-radius:6px;border:1px solid #1e293b;"
-    />
+    <a onclick="showSection('provision')" class="active">User & VM Provisioning</a>
+    <a onclick="showSection('linux')">Linux User Monitoring</a>
+    <a onclick="showSection('vuln')">Vulnerability Assessment</a>
+    <a onclick="showSection('logs')">System Logs</a>
 
-    <input
-        type="password"
-        name="web_password"
-        placeholder="Web App Password"
-        required
-        style="padding:8px;width:40%;margin-left:10px;
-               border-radius:6px;border:1px solid #1e293b;"
-    />
-
-    <button
-        type="submit"
-        style="padding:8px 14px;margin-left:10px;border-radius:6px;
-               background:#22c55e;color:#020617;border:none;cursor:pointer;">
-        Create User
-    </button>
-</form>
-
-
-    <pre id="createUserResult"
-         style="margin-top:15px;background:#020617;padding:10px;
-                border-radius:8px;display:none;"></pre>
+    <a href="/logout" class="logout">🚪 Logout</a>
 </div>
 
+<!-- MAIN -->
+<div class="main">
 
-<div class="card">
-    <h3>👥 Provisioned VM ↔ Web Users</h3>
-    <table>
-        <tr>
-            <th>User</th>
-            <th>Web Password</th>
-            <th>Created</th>
-        </tr>
-        {% for u in provisioned_users %}
-        <tr>
-            <td>{{ u["username"] }}</td>
-            <td><strong>{{ u["web_password"] }}</strong></td>
-            <td>{{ u["created_at"] }}</td>
+<!-- USER + VM -->
+<div id="provision" class="section active">
+    <div class="section-title">User & VM Provisioning</div>
 
-        </tr>
-        {% else %}
-        <tr><td colspan="3">No users created</td></tr>
-        {% endfor %}
-    </table>
-</div>
-
-<!-- Linux User Monitoring -->
-<div class="grid">
     <div class="card">
-        <h3>🟢 Currently Online Users (Linux)</h3>
-        <table>
-            {% for u in online_users %}
-            <tr><td class="online">{{ u }}</td></tr>
-            {% else %}
-            <tr><td>No users online</td></tr>
-            {% endfor %}
-        </table>
+        <form method="POST" action="/create-user">
+            <div class="form-row">
+                <input name="username" placeholder="Student / User ID" required>
+                <input type="password" name="web_password" placeholder="Web Application Password" required>
+                <button type="submit">Create User</button>
+            </div>
+        </form>
     </div>
 
     <div class="card">
-        <h3>👤 Linux User Status</h3>
         <table>
-            <tr><th>User</th><th>Status</th><th>Last Time</th></tr>
-            {% for user, info in user_status.items() %}
+            <tr><th>User</th><th>Web Password</th><th>Created</th></tr>
+            {% for u in provisioned_users %}
+            <tr>
+                <td>{{ u["username"] }}</td>
+                <td><strong>{{ u["web_password"] }}</strong></td>
+                <td>{{ u["created_at"] }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3">No users provisioned</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+
+<!-- LINUX -->
+<div id="linux" class="section">
+    <div class="section-title">Linux User Monitoring</div>
+
+    <div class="grid">
+        <div class="card">
+            <h4>Currently Online</h4>
+            <table>
+                {% for u in online_users %}
+                <tr><td class="online">{{ u }}</td></tr>
+                {% else %}
+                <tr><td>No active users</td></tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <div class="card">
+            <h4>User Status</h4>
+            <table>
+                <tr><th>User</th><th>Status</th><th>Last Seen</th></tr>
+                {% for user, info in user_status.items() %}
+                <tr>
+                    <td>{{ user }}</td>
+                    <td class="{{ 'online' if info.event == 'ONLINE' else 'offline' }}">{{ info.event }}</td>
+                    <td>{{ info.time }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- VULNERABILITY -->
+<div id="vuln" class="section">
+    <div class="section-title">Vulnerability Assessment & Leaderboard</div>
+
+    <div class="card">
+        <table>
+            <tr><th>User</th><th>Total</th><th>Identified Vulnerabilities</th></tr>
+            {% for user, data in leaderboard %}
             <tr>
                 <td>{{ user }}</td>
-                <td class="{{ 'online' if info.event == 'ONLINE' else 'offline' }}">
-                    {{ info.event }}
-                </td>
-                <td>{{ info.time }}</td>
+                <td class="vuln">{{ data.count }}</td>
+                <td>{{ ", ".join(data.vulns) }}</td>
             </tr>
             {% endfor %}
         </table>
     </div>
-</div>
 
-<div class="grid">
-    <!-- Chart (LEFT - 50%) -->
     <div class="card">
-        <h3>📊 Vulnerabilities per User</h3>
-        <canvas id="vulnChart" style="height:240px;"></canvas>
-    </div>
-
-    <!-- Leaderboard (RIGHT - 50%) -->
-    <div class="card">
-        <h3>🏆 VulnBank Leaderboard</h3>
         <table>
-            <tr>
-                <th>Rank</th>
-                <th>User</th>
-                <th>Vulns</th>
-            </tr>
+            <tr><th>Rank</th><th>User</th><th>Findings</th></tr>
             {% for user, data in leaderboard %}
             <tr>
                 <td class="rank">#{{ loop.index }}</td>
@@ -420,91 +666,36 @@ def dashboard():
     </div>
 </div>
 
+<!-- LOGS -->
+<div id="logs" class="section">
+    <div class="section-title">System Logs</div>
+    <div class="card">
+        Logs collected from Linux monitoring agents and VulnBank services are retained
+        for auditing, incident analysis, and academic evaluation.
+    </div>
+</div>
 
-
-<!-- VulnBank Details -->
-<div class="card">
-    <h3>🏦 VulnBank User Vulnerability Details</h3>
-    <table>
-        <tr>
-            <th>User</th>
-            <th>Count</th>
-            <th>Vulnerabilities</th>
-        </tr>
-        {% for user, data in leaderboard %}
-        <tr>
-            <td>{{ user }}</td>
-            <td class="vuln">{{ data.count }}</td>
-            <td>{{ ", ".join(data.vulns) }}</td>
-        </tr>
-        {% endfor %}
-    </table>
+<div class="footer">
+    © 2026 University Cyber Security Laboratory  
+    <br>SOC Monitoring & Attack Simulation Platform
 </div>
 
 </div>
 
 <script>
-new Chart(document.getElementById('vulnChart'), {
-    type: 'bar',
-    data: {
-        labels: {{ chart_labels | tojson }},
-        datasets: [{
-            label: 'Vulnerabilities Found',
-            data: {{ chart_values | tojson }},
-            backgroundColor: '#ef4444'
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-            y: { beginAtZero: true }
-        }
-    }
-});
-document.getElementById("createUserForm").addEventListener("submit", async function (e) {
-    e.preventDefault();
+function showSection(id){
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
 
-    const username = document.getElementById("newUsername").value.trim();
-    const webPassword = document.getElementById("newWebPassword").value;
-    const output = document.getElementById("createUserResult");
-
-    if (!username || !webPassword) return;
-
-    output.style.display = "block";
-    output.textContent = "Creating user...";
-
-    try {
-        const res = await fetch("/api/create-user", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                username: username,
-                web_password: webPassword
-            })
-        });
-
-        const data = await res.json();
-
-        if (data.error) {
-            output.textContent = "❌ Error: " + data.error;
-        } else {
-            output.textContent =
-                "✅ User Created\n\n" +
-                "Username: " + data.username + "\n" +
-                "VM Password (auto-generated): " + data.vm_password + "\n\n" +
-                "⚠ Save VM password now. It will not be shown again.";
-        }
-
-    } catch (err) {
-        output.textContent = "❌ Request failed";
-    }
-});
+    document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+    event.target.classList.add('active');
+}
 </script>
-
 
 </body>
 </html>
+
+
 """
 
     return render_template_string(
