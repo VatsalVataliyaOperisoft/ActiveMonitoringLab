@@ -386,9 +386,9 @@ def dashboard():
 <title>University SOC Dashboard</title>
 
 <style>
-:root {
-    --bg-main:#020617;
-    --bg-panel:#020617;
+:root{
+    --bg:#020617;
+    --panel:#020617;
     --border:#1e293b;
     --primary:#38bdf8;
     --success:#22c55e;
@@ -402,7 +402,7 @@ def dashboard():
 
 body{
     margin:0;
-    background:var(--bg-main);
+    background:var(--bg);
     color:var(--text);
     font-family:"Segoe UI",system-ui,sans-serif;
     display:flex;
@@ -411,7 +411,7 @@ body{
 /* ---------- SIDEBAR ---------- */
 .sidebar{
     width:260px;
-    background:#020617;
+    background:var(--panel);
     border-right:1px solid var(--border);
     padding:24px 18px;
     height:100vh;
@@ -420,7 +420,7 @@ body{
 
 .sidebar h2{
     color:var(--primary);
-    margin-bottom:28px;
+    margin-bottom:30px;
 }
 
 .sidebar a{
@@ -431,7 +431,7 @@ body{
     color:var(--text);
     text-decoration:none;
     cursor:pointer;
-    transition:0.2s;
+    transition:.2s;
 }
 
 .sidebar a:hover,
@@ -457,15 +457,12 @@ body{
 /* ---------- SECTIONS ---------- */
 .section{
     display:none;
-    animation:fade 0.3s ease-in;
+    animation:fade .3s ease-in;
 }
-
-.section.active{
-    display:block;
-}
+.section.active{display:block}
 
 @keyframes fade{
-    from{opacity:0;transform:translateY(5px)}
+    from{opacity:0;transform:translateY(6px)}
     to{opacity:1;transform:none}
 }
 
@@ -484,7 +481,7 @@ body{
     border-radius:18px;
     padding:24px;
     margin-bottom:26px;
-    box-shadow:0 12px 30px rgba(0,0,0,0.55);
+    box-shadow:0 12px 30px rgba(0,0,0,.55);
 }
 
 /* ---------- GRID ---------- */
@@ -547,6 +544,7 @@ button{
     cursor:pointer;
 }
 
+/* ---------- FOOTER ---------- */
 .footer{
     margin-top:50px;
     text-align:center;
@@ -562,10 +560,10 @@ button{
 <div class="sidebar">
     <h2>🛡 SOC LAB</h2>
 
-    <a onclick="showSection('provision')" class="active">User & VM Provisioning</a>
-    <a onclick="showSection('linux')">Linux User Monitoring</a>
-    <a onclick="showSection('vuln')">Vulnerability Assessment</a>
-    <a onclick="showSection('logs')">System Logs</a>
+    <a data-section="provision" onclick="showSection('provision')">User & VM Provisioning</a>
+    <a data-section="linux" onclick="showSection('linux')">Linux User Monitoring</a>
+    <a data-section="vuln" onclick="showSection('vuln')">Vulnerability Assessment</a>
+    <a data-section="logs" onclick="showSection('logs')">System Logs</a>
 
     <a href="/logout" class="logout">🚪 Logout</a>
 </div>
@@ -574,7 +572,7 @@ button{
 <div class="main">
 
 <!-- USER + VM -->
-<div id="provision" class="section active">
+<div id="provision" class="section">
     <div class="section-title">User & VM Provisioning</div>
 
     <div class="card">
@@ -670,8 +668,8 @@ button{
 <div id="logs" class="section">
     <div class="section-title">System Logs</div>
     <div class="card">
-        Logs collected from Linux monitoring agents and VulnBank services are retained
-        for auditing, incident analysis, and academic evaluation.
+        Logs collected from Linux agents and VulnBank services are retained for audit,
+        incident analysis, and academic evaluation.
     </div>
 </div>
 
@@ -684,17 +682,31 @@ button{
 
 <script>
 function showSection(id){
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    // show section
+    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
     document.getElementById(id).classList.add('active');
 
-    document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
-    event.target.classList.add('active');
+    // highlight sidebar
+    document.querySelectorAll('.sidebar a[data-section]').forEach(a=>a.classList.remove('active'));
+    document.querySelector(`.sidebar a[data-section="${id}"]`).classList.add('active');
+
+    // update URL hash
+    window.location.hash = id;
 }
+
+// restore active section on refresh
+window.addEventListener("load", ()=>{
+    const hash = window.location.hash.replace("#","");
+    if(hash && document.getElementById(hash)){
+        showSection(hash);
+    } else {
+        showSection("provision"); // default
+    }
+});
 </script>
 
 </body>
 </html>
-
 
 """
 
