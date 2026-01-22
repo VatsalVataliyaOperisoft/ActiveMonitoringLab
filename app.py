@@ -267,25 +267,46 @@ def vm_created():
 
 @app.route("/api/report", methods=["POST"])
 def receive_report():
+    """
+    Receives logs and heartbeat events from:
+    - VulnBank Web Application
+    - Linux monitoring agents (future use)
+
+    Stores all logs and processes VulnBank heartbeat events
+    for challenge completion tracking.
+    """
+
+    # Safely read JSON payload
     data = request.json or {}
+
+    # Always write raw log for audit & dashboard
     write_log(data)
 
-    if data.get("source") == "VulnBank-Web":
-        event = data.get("event", {})
-        user = event.get("user")
-        vuln_count = event.get("vuln_count", 0)
+    source = data.get("source")
+    event = data.get("event", {})
 
-        print("[DEBUG] Heartbeat from:", user, "count:", vuln_count)
-        # user_messages = {}
-        if user and vuln_count >= 2:
-            user_messages[user] = {
-                "message": "🎉 Congratulations! You have solved this challenge from server.",
-                "status": "completed",
-                "time": datetime.utcnow().isoformat()
-            }
-            print("[DEBUG] Message set for user:", user)
+    # Process VulnBank heartbeat
+    if source == "VulnBank-Web" and isinstance(event, dict):
+        if event.get("event") == "HEARTBEAT":
+            user = event.get("user")
+            vuln_count = int(event.get("vuln_count", 0))
+
+            print("[DEBUG] VulnBank HEARTBEAT:",
+                  "user =", user,
+                  "| vulnerabilities =", vuln_count)
+
+            # 🎯 Challenge completion logic
+            if user and vuln_count >= 2:
+                user_messages[user] = {
+                    "message": "🎉 Congratulations! You have solved this challenge from server.",
+                    "status": "completed",
+                    "time": datetime.utcnow().isoformat()
+                }
+
+                print("[DEBUG] Challenge completed for:", user)
 
     return jsonify({"status": "ok"}), 200
+
 
 
 @app.route("/api/user-message", methods=["GET"])
@@ -724,3 +745,4 @@ window.addEventListener("load", ()=>{
 # ---------------- RUN ----------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
+
